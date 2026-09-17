@@ -1,4 +1,854 @@
-import React,{useEffect,useMemo,useState}from'react';
+import React,{useEffect,useMemo,useState}from'react';import React, { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Bell,
+  ChevronDown,
+  Gift,
+  Home,
+  Menu,
+  Play,
+  PlayCircle,
+  Trophy,
+  UserRound,
+  X,
+  CheckCircle2,
+  Clock3,
+  LoaderCircle,
+  ShieldCheck,
+  Plus,
+  Users,
+  Flame,
+  WalletCards,
+  Target,
+  Medal,
+  ArrowUpRight,
+  Star,
+  LockKeyhole,
+  Phone,
+  Mail,
+  Send,
+  BadgeCheck,
+  CalendarDays,
+  Info,
+  Shield,
+  ClipboardCheck,
+  ListChecks,
+  HelpCircle,
+} from "lucide-react";
+
+import { ADS, LEADERBOARD, GIFT_REWARDS } from "./data";
+
+const load = (key, fallback) => {
+  try {
+    const value = localStorage.getItem(key);
+    return value === null ? fallback : JSON.parse(value);
+  } catch {
+    return fallback;
+  }
+};
+
+const save = (key, value) => {
+  localStorage.setItem(key, JSON.stringify(value));
+};
+
+export default function App() {
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const savedDay = load("dayKey", todayKey);
+  const fresh = savedDay !== todayKey;
+
+  const [showSplash, setShowSplash] = useState(
+    () => sessionStorage.getItem("veloopSplashShown") !== "yes"
+  );
+
+  const [page, setPage] = useState("watch");
+  const [open, setOpen] = useState(false);
+
+  const [watched, setWatched] = useState(() =>
+    fresh ? [] : load("watched", [])
+  );
+
+  const [today, setToday] = useState(() =>
+    fresh ? 0 : load("today", 0)
+  );
+
+  const [todayEarnings, setTodayEarnings] = useState(() =>
+    fresh ? 0 : load("todayEarnings", 0)
+  );
+
+  const [life, setLife] = useState(() => load("life", 0));
+
+  const [activity, setActivity] = useState(() =>
+    fresh ? [] : load("activity", [])
+  );
+
+  const [history, setHistory] = useState(() =>
+    fresh ? [] : load("history", [])
+  );
+
+  const [giftEntry, setGiftEntry] = useState(() =>
+    load("giftEntry", null)
+  );
+
+  const [claimedReward, setClaimedReward] = useState(() =>
+    load("claimedReward", null)
+  );
+
+  const [lastGoalDate, setLastGoalDate] = useState(() =>
+    load("lastGoalDate", null)
+  );
+
+  const [streak, setStreak] = useState(() =>
+    fresh ? 0 : load("streak", 0)
+  );
+
+  const [selected, setSelected] = useState(null);
+  const [status, setStatus] = useState("idle");
+  const [left, setLeft] = useState(0);
+  const [progress, setProgress] = useState(0);
+
+  const timerRef = useRef(null);
+  const loadingRef = useRef(null);
+
+  const available = useMemo(
+    () => ADS.filter((ad) => !watched.includes(ad.id)),
+    [watched]
+  );
+
+  // Daily target is based on actual number of ads.
+  const goal = ADS.length;
+
+  const balance = 2450 + life;
+
+  useEffect(() => {
+    save("dayKey", todayKey);
+    save("watched", watched);
+    save("today", today);
+    save("todayEarnings", todayEarnings);
+    save("life", life);
+    save("activity", activity);
+    save("history", history);
+    save("giftEntry", giftEntry);
+    save("claimedReward", claimedReward);
+    save("lastGoalDate", lastGoalDate);
+    save("streak", streak);
+  }, [
+    todayKey,
+    watched,
+    today,
+    todayEarnings,
+    life,
+    activity,
+    history,
+    giftEntry,
+    claimedReward,
+    lastGoalDate,
+    streak,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      clearInterval(timerRef.current);
+      clearTimeout(loadingRef.current);
+    };
+  }, []);
+
+  const dynamicBoard = useMemo(() => {
+    const base = LEADERBOARD.map((x) => ({ ...x }));
+
+    const user = {
+      name: "You",
+      points: life,
+      ads: history.length,
+      avatar: "YO",
+      isUser: true,
+    };
+
+    return [...base, user]
+      .sort((a, b) => b.points - a.points)
+      .map((x, index) => ({
+        ...x,
+        rank: index + 1,
+      }));
+  }, [life, history.length]);
+
+  const userRank =
+    dynamicBoard.find((item) => item.isUser)?.rank ||
+    dynamicBoard.length;
+
+  const winner = userRank <= 3;
+
+  const startSplash = () => {
+    sessionStorage.setItem("veloopSplashShown", "yes");
+    setShowSplash(false);
+  };
+
+  /*
+    WATCH AD
+    - Only one ad can run at a time.
+    - Closing popup cancels timer.
+    - Reward is added only after timer reaches 0.
+    - Actual ad reward is used.
+  */
+  const watch = (ad) => {
+    if (!ad || selected || watched.includes(ad.id)) return;
+
+    clearInterval(timerRef.current);
+    clearTimeout(loadingRef.current);
+
+    setSelected(ad);
+    setStatus("loading");
+    setLeft(ad.duration);
+    setProgress(0);
+
+    loadingRef.current = setTimeout(() => {
+      setStatus("watching");
+
+      let seconds = ad.duration;
+
+      timerRef.current = setInterval(() => {
+        seconds = Math.max(0, seconds - 1);
+
+        setLeft(seconds);
+        setProgress(
+          ((ad.duration - seconds) / ad.duration) * 100
+        );
+
+        if (seconds <= 0) {
+          clearInterval(timerRef.current);
+          timerRef.current = null;
+
+          setProgress(100);
+          setStatus("completed");
+
+          setWatched((old) =>
+            old.includes(ad.id) ? old : [...old, ad.id]
+          );
+
+          setToday((old) => old + 1);
+
+          // IMPORTANT: use actual reward of selected ad
+          setTodayEarnings((old) => old + Number(ad.reward));
+
+          setLife((old) => old + Number(ad.reward));
+
+          const activityId = Date.now();
+
+          setHistory((old) => [
+            ...old,
+            {
+              id: activityId,
+              reward: Number(ad.reward),
+              brand: ad.brand,
+              date: todayKey,
+            },
+          ]);
+
+          setActivity((old) => [
+            {
+              id: activityId,
+              reward: Number(ad.reward),
+              brand: ad.brand,
+              time: "just now",
+            },
+            ...old,
+          ]);
+
+          const completedCount = watched.length + 1;
+
+          if (
+            completedCount >= goal &&
+            lastGoalDate !== todayKey
+          ) {
+            const yesterday = new Date(
+              Date.now() - 86400000
+            )
+              .toISOString()
+              .slice(0, 10);
+
+            setStreak((old) =>
+              lastGoalDate === yesterday ? old + 1 : 1
+            );
+
+            setLastGoalDate(todayKey);
+          }
+        }
+      }, 1000);
+    }, 650);
+  };
+
+  const close = () => {
+    clearInterval(timerRef.current);
+    clearTimeout(loadingRef.current);
+
+    timerRef.current = null;
+    loadingRef.current = null;
+
+    setSelected(null);
+    setStatus("idle");
+    setLeft(0);
+    setProgress(0);
+  };
+
+  const reset = () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    window.location.reload();
+  };
+
+  const nav = (pageName) => {
+    setPage(pageName);
+    setOpen(false);
+  };
+
+  return (
+    <div className="shell">
+      {showSplash && (
+        <div className="splash">
+          <div className="splash-glow"></div>
+
+          <div className="splash-card">
+            <div className="splash-logo">V</div>
+
+            <span className="splash-kicker">
+              WELCOME TO
+            </span>
+
+            <h1>VELOOP Rewards & Giveaways</h1>
+
+            <p>
+              Watch ads • Earn VE points • Climb the
+              leaderboard
+            </p>
+
+            <button onClick={startSplash}>
+              Enter Veloop
+              <ArrowUpRight />
+            </button>
+
+            <small>
+              Demo experience · Click to continue
+            </small>
+          </div>
+        </div>
+      )}
+
+      <aside className={open ? "side open" : "side"}>
+        <div className="brand">
+          <div className="logo-mark">V</div>
+
+          <div>
+            <strong>VELOOP</strong>
+            <small>Rewards & Giveaways</small>
+          </div>
+
+          <button
+            className="close"
+            onClick={() => setOpen(false)}
+          >
+            <X />
+          </button>
+        </div>
+
+        <nav>
+          <button
+            className={page === "home" ? "active" : ""}
+            onClick={() => nav("home")}
+          >
+            <Home />
+            Dashboard
+          </button>
+
+          <button
+            className={page === "watch" ? "active" : ""}
+            onClick={() => nav("watch")}
+          >
+            <PlayCircle />
+            Watch & Earn
+          </button>
+
+          <button
+            className={page === "rewards" ? "active" : ""}
+            onClick={() => nav("rewards")}
+          >
+            <Gift />
+            Rewards
+          </button>
+
+          <button
+            className={page === "leaderboard" ? "active" : ""}
+            onClick={() => nav("leaderboard")}
+          >
+            <Trophy />
+            Leaderboard
+          </button>
+
+          <button
+            className={page === "profile" ? "active" : ""}
+            onClick={() => nav("profile")}
+          >
+            <UserRound />
+            Profile
+          </button>
+
+          <button
+            className={page === "how" ? "active" : ""}
+            onClick={() => nav("how")}
+          >
+            <ListChecks />
+            How It Works
+          </button>
+
+          <button
+            className={page === "safety" ? "active" : ""}
+            onClick={() => nav("safety")}
+          >
+            <Shield />
+            Eligibility & Safety
+          </button>
+        </nav>
+
+        <div className="side-art">
+          <div className="headphone">V</div>
+
+          <div className="script">
+            Watch
+            <br />
+            Earn
+            <br />
+            Win
+          </div>
+
+          <b>
+            Your Time
+            <br />
+            <span>=</span>
+            <br />
+            Real Rewards
+          </b>
+        </div>
+      </aside>
+
+      <main>
+        <header>
+          <div className="head-left">
+            <button
+              className="menu"
+              onClick={() => setOpen(true)}
+            >
+              <Menu />
+            </button>
+
+            <div className="welcome">
+              <div className="avatar-group">
+                <Users />
+              </div>
+
+              <div>
+                <strong>Welcome to VELOOP 👋</strong>
+                <small>
+                  Keep watching, keep earning!
+                </small>
+              </div>
+            </div>
+          </div>
+
+          <div className="head-right">
+            <Bell className="bell" />
+
+            <div className="balance">
+              <span>VE</span>
+              <b>{balance.toLocaleString()}</b>
+              <Plus />
+            </div>
+
+            <div className="profile-avatar">V</div>
+
+            <ChevronDown />
+          </div>
+        </header>
+
+        {page === "watch" && (
+          <WatchPage
+            watched={watched}
+            today={today}
+            todayEarnings={todayEarnings}
+            balance={balance}
+            available={available}
+            activity={activity}
+            watch={watch}
+            setPage={setPage}
+            goal={goal}
+            streak={streak}
+          />
+        )}
+
+        {page === "leaderboard" && (
+          <LeaderboardPage
+            balance={balance}
+            today={today}
+            todayEarnings={todayEarnings}
+            watched={watched}
+            setPage={setPage}
+            board={dynamicBoard}
+            userRank={userRank}
+            winner={winner}
+            claimedReward={claimedReward}
+            setClaimedReward={setClaimedReward}
+          />
+        )}
+
+        {page === "rewards" && (
+          <RewardsPage
+            balance={balance}
+            setPage={setPage}
+            userRank={userRank}
+            winner={winner}
+            claimedReward={claimedReward}
+            setClaimedReward={setClaimedReward}
+          />
+        )}
+
+        {page === "home" && (
+          <HomePage
+            balance={balance}
+            watched={watched}
+            todayEarnings={todayEarnings}
+            setPage={setPage}
+            goal={goal}
+            userRank={userRank}
+          />
+        )}
+
+        {page === "how" && (
+          <HowItWorksPage setPage={setPage} />
+        )}
+
+        {page === "safety" && (
+          <SafetyPage setPage={setPage} />
+        )}
+
+        {page === "profile" && (
+          <ProfilePage
+            balance={balance}
+            watched={watched}
+            today={today}
+            goal={goal}
+            streak={streak}
+            userRank={userRank}
+            winner={winner}
+            giftEntry={giftEntry}
+            setGiftEntry={setGiftEntry}
+            setPage={setPage}
+          />
+        )}
+
+        <footer>
+          © 2025 Veloop Rewards & Giveaways{" "}
+          <span>|</span> Watch <span>•</span> Earn{" "}
+          <span>•</span> Win
+          <small>
+            Demo rewards & points experience ♥
+          </small>
+        </footer>
+
+        <button
+          className="reset-fab"
+          title="Reset demo"
+          onClick={reset}
+        >
+          ↻
+        </button>
+      </main>
+
+      {selected && (
+        <div className="modal">
+          <div className="watch-modal">
+            <button
+              className="modal-x"
+              onClick={close}
+            >
+              <X />
+            </button>
+
+            {status === "loading" && (
+              <div className="state">
+                <LoaderCircle className="spin" />
+
+                <h2>Loading advertisement…</h2>
+
+                <p>
+                  Preparing your reward session.
+                </p>
+              </div>
+            )}
+
+            {status === "watching" && (
+              <div className="state">
+                <div className="fake">
+                  <img
+                    src={selected.image}
+                    alt={selected.title}
+                  />
+
+                  <div>
+                    <b>{selected.brand}</b>
+                    <small>
+                      SPONSORED PREVIEW
+                    </small>
+                  </div>
+                </div>
+
+                <div className="timer">
+                  <span>
+                    Watching advertisement
+                  </span>
+
+                  <b>{left}s</b>
+                </div>
+
+                <div className="bar">
+                  <i
+                    style={{
+                      width: `${progress}%`,
+                    }}
+                  />
+                </div>
+
+                <p>
+                  Please keep this window open until
+                  the timer reaches zero.
+                </p>
+              </div>
+            )}
+
+            {status === "completed" && (
+              <div className="state">
+                <div className="success">✓</div>
+
+                <h2>Reward successful!</h2>
+
+                <p>
+                  You earned{" "}
+                  <b>
+                    +{selected.reward} VE
+                  </b>{" "}
+                  for completing{" "}
+                  {selected.brand}.
+                </p>
+
+                <span className="note">
+                  <ShieldCheck />
+                  Reward added to your balance
+                </span>
+
+                <button
+                  className="continue"
+                  onClick={close}
+                >
+                  Continue
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ================= WATCH PAGE ================= */
+
+function WatchPage({
+  watched,
+  today,
+  todayEarnings,
+  balance,
+  available,
+  activity,
+  watch,
+  setPage,
+  goal,
+  streak,
+}) {
+  const percent =
+    goal > 0
+      ? Math.min(100, (watched.length / goal) * 100)
+      : 0;
+
+  return (
+    <section className="page">
+      <div className="hero">
+        <div className="hero-copy">
+          <span className="new-badge">NEW</span>
+
+          <h1>Watch & Earn</h1>
+
+          <h2>Turn your time into rewards!</h2>
+
+          <p>
+            Watch short ads, complete the timer and
+            <br />
+            get VE points instantly.
+          </p>
+
+          <button
+            className="hero-btn"
+            onClick={() =>
+              available.length > 0 &&
+              watch(available[0])
+            }
+          >
+            <Play fill="currentColor" />
+            {available.length
+              ? "Watch Now"
+              : "All Ads Watched"}
+            <Play fill="currentColor" />
+          </button>
+        </div>
+
+        <div className="hero-visual">
+          <div className="screen">
+            <div>▶</div>
+          </div>
+
+          <div className="coin c1">VE</div>
+          <div className="coin c2">VE</div>
+          <div className="coin c3">VE</div>
+
+          <div className="clock-ring">◷</div>
+
+          <span className="ad-tag">AD</span>
+
+          <i>
+            Earn
+            <br />
+            More
+            <br />
+            VE ↗
+          </i>
+        </div>
+      </div>
+
+      <div className="content-grid">
+        <div className="main-col">
+          <div className="stats">
+            <Stat
+              icon={<Play />}
+              label="Ads Watched"
+              value={`${watched.length} / ${goal}`}
+              progress={percent}
+              hint={
+                watched.length >= goal
+                  ? "Daily target completed!"
+                  : `${
+                      goal - watched.length
+                    } more to complete today`
+              }
+            />
+
+            <Stat
+              cls="green"
+              icon={<WalletCards />}
+              label="Today's Earnings"
+              value={`+${todayEarnings} VE`}
+              hint="Actual ad rewards are added"
+            />
+
+            <Stat
+              cls="pink"
+              icon={<Flame />}
+              label="Daily Streak"
+              value={`${streak} ${
+                streak === 1 ? "Day" : "Days"
+              } 🔥`}
+              hint={
+                streak
+                  ? "Keep completing the daily target"
+                  : "Complete today's target to start"
+              }
+            />
+
+            <Stat
+              cls="blue"
+              icon={<WalletCards />}
+              label="Total Balance"
+              value={`${balance.toLocaleString()} VE`}
+              hint="Points in your demo wallet"
+            />
+          </div>
+
+          <div className="earning-strip card">
+            <div>
+              <Star />
+              <b>Weekly leaderboard is live</b>
+              <span>
+                Watch more ads, climb the ranks and
+                unlock gift rewards.
+              </span>
+            </div>
+
+            <button
+              onClick={() => setPage("leaderboard")}
+            >
+              View Leaderboard <ArrowUpRight />
+            </button>
+          </div>
+
+          <div className="ads-heading">
+            <div>
+              <h2>
+                <PlayCircle />
+                Available Ads
+              </h2>
+
+              <p>
+                Watch ads, complete the timer and earn
+                VE points.
+              </p>
+            </div>
+
+            <span>
+              {ADS.length} Unique Ads
+            </span>
+          </div>
+
+          <div className="ads">
+            {ADS.map((ad, index) => {
+              const isWatched = watched.includes(
+                ad.id
+              );
+
+              return (
+                <article
+                  className={
+                    isWatched
+                      ? "ad card done"
+                      : "ad card"
+                  }
+                  key={ad.id}
+                >
+                  <div
+                    className={`ad-visual ${
+                      ad.tone || ""
+                    }`}
+                  >
+                    <em>{index + 1}</em>
+
+                    <small>
+                      ◷ {ad.duration}s
+                    </small>
+
+                    <div className="ad-image">
+                      <img
+                        src={ad.image}
+                        alt={ad.title}
+                      />
+                    </div>
+                  </div>
+
+                  <div className="ad-body">
+                    <h3>{ad.title}</h3>
+
+    
 import{Bell,ChevronDown,Gift,Home,Menu,Play,PlayCircle,Trophy,UserRound,X,CheckCircle2,Clock3,LoaderCircle,ShieldCheck,Plus,Users,Flame,WalletCards,Target,Medal,ArrowUpRight,Star,LockKeyhole,Phone,Mail,Send,BadgeCheck,CalendarDays,Info,Shield,ClipboardCheck,ListChecks,HelpCircle}from'lucide-react';
 import{ADS,LEADERBOARD,GOAL,GIFT_REWARDS}from'./data';
 const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{return d}};const save=(k,v)=>localStorage.setItem(k,JSON.stringify(v));
