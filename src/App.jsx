@@ -8,8 +8,7 @@ export default function App(){
  const [page,setPage]=useState('watch'),
       [open,setOpen]=useState(false),
       [showSplash,setShowSplash]=useState(true);
- const[page,setPage]=useState('watch'),[open,setOpen]=useState(false);
- const[watched,setWatched]=useState(()=>fresh?[]:load('watched',[]));
+const[watched,setWatched]=useState(()=>fresh?[]:load('watched',[]));
  const[today,setToday]=useState(()=>fresh?0:load('today',0));
  const[todayEarnings,setTodayEarnings]=useState(()=>fresh?0:load('todayEarnings',0));
  const[life,setLife]=useState(load('life',0));
