@@ -5,6 +5,9 @@ const load=(k,d)=>{try{return JSON.parse(localStorage.getItem(k))??d}catch{retur
 export default function App(){
  const todayKey=new Date().toISOString().slice(0,10);
  const fresh=load('dayKey',todayKey)!==todayKey;
+ const [page,setPage]=useState('watch'),
+      [open,setOpen]=useState(false),
+      [showSplash,setShowSplash]=useState(true);
  const[page,setPage]=useState('watch'),[open,setOpen]=useState(false);
  const[watched,setWatched]=useState(()=>fresh?[]:load('watched',[]));
  const[today,setToday]=useState(()=>fresh?0:load('today',0));
