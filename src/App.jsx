@@ -871,4 +871,6 @@ function HomePage({
           <div>
             <span className="eyebrow">
               NEED HELP?
+            </span>
+          </div>
            
